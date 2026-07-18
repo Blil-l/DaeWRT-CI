@@ -1,150 +1,142 @@
 #!/bin/bash
+# 确保脚本在 wrt 目录下执行，获取绝对路径以增加健壮性
+WRT_DIR="${WRT_DIR:-.}"
+PKG_PATH="$WRT_DIR/package/"
 
-PKG_PATH="$GITHUB_WORKSPACE/$WRT_DIR/package/"
+echo "🔧 Starting Handles.sh customization..."
 
-#预置HomeProxy数据
-if [ -d *"homeproxy"* ]; then
-	echo " "
-
-	HP_RULE="surge"
-	HP_PATH="homeproxy/root/etc/homeproxy"
-
-	rm -rf ./$HP_PATH/resources/*
-
-	git clone -q --depth=1 --single-branch --branch "release" "https://github.com/Loyalsoldier/surge-rules.git" ./$HP_RULE/
-	cd ./$HP_RULE/ && RES_VER=$(git log -1 --pretty=format:'%s' | grep -o "[0-9]*")
-
-	echo $RES_VER | tee china_ip4.ver china_ip6.ver china_list.ver gfw_list.ver
-	awk -F, '/^IP-CIDR,/{print $2 > "china_ip4.txt"} /^IP-CIDR6,/{print $2 > "china_ip6.txt"}' cncidr.txt
-	sed 's/^\.//g' direct.txt > china_list.txt ; sed 's/^\.//g' gfw.txt > gfw_list.txt
-	mv -f ./{china_*,gfw_list}.{ver,txt} ../$HP_PATH/resources/
-
-	cd .. && rm -rf ./$HP_RULE/
-
-	cd $PKG_PATH && echo "homeproxy date has been updated!"
+# ==========================================
+# 1. 预置 HomeProxy 数据
+# ==========================================
+if [ -d "$PKG_PATH/homeproxy" ]; then
+    echo "📥 Updating HomeProxy rules..."
+    HP_RULE="surge_rules_temp"
+    HP_PATH="$PKG_PATH/homeproxy/root/etc/homeproxy"
+    rm -rf "$HP_PATH/resources/"*
+    
+    if git clone -q --depth=1 --single-branch --branch "release" "https://github.com/Loyalsoldier/surge-rules.git" "$HP_RULE"; then
+        cd "$HP_RULE" || exit 1
+        RES_VER=$(git log -1 --pretty=format:'%s' | grep -o "[0-9]*")
+        echo "$RES_VER" | tee china_ip4.ver china_ip6.ver china_list.ver gfw_list.ver
+        awk -F, '/^IP-CIDR,/{print $2 > "china_ip4.txt"} /^IP-CIDR6,/{print $2 > "china_ip6.txt"}' cncidr.txt
+        sed 's/^\.//g' direct.txt > china_list.txt
+        sed 's/^\.//g' gfw.txt > gfw_list.txt
+        mv -f ./{china_*,gfw_list}.{ver,txt} "../$HP_PATH/resources/"
+        cd .. && rm -rf "$HP_RULE"
+        echo "✅ HomeProxy rules updated!"
+    else
+        echo "⚠️ Failed to clone surge-rules, skipping."
+    fi
 fi
 
-#修改argon主题字体和颜色
-if [ -d *"luci-theme-argon"* ]; then
-	echo " "
-
-	cd ./luci-theme-argon/
-
-	sed -i "s/primary '.*'/primary '#31a1a1'/; s/'0.2'/'0.5'/; s/'none'/'bing'/; s/'600'/'normal'/" ./luci-app-argon-config/root/etc/config/argon
-
-	cd $PKG_PATH && echo "theme-argon has been fixed!"
+# ==========================================
+# 2. 修改 Argon 主题字体和颜色
+# ==========================================
+ARGON_DIR=$(find "$PKG_PATH" -maxdepth 2 -type d -name "luci-theme-argon" | head -n 1)
+if [ -n "$ARGON_DIR" ] && [ -d "$ARGON_DIR" ]; then
+    echo "🎨 Customizing Argon theme..."
+    CONFIG_FILE="$ARGON_DIR/luci-app-argon-config/root/etc/config/argon"
+    if [ -f "$CONFIG_FILE" ]; then
+        sed -i "s/primary '.*'/primary '#31a1a1'/; s/'0.2'/'0.5'/; s/'none'/'bing'/; s/'600'/'normal'/" "$CONFIG_FILE"
+        echo "✅ Argon theme customized!"
+    fi
 fi
 
-#修改aurora菜单式样
-if [ -d *"luci-app-aurora-config"* ]; then
-	echo " "
-
-	cd ./luci-app-aurora-config/
-
-	sed -i "s/nav_submenu_type '.*'/nav_submenu_type 'boxed-dropdown'/g" $(find ./root/ -type f -name "*aurora")
-
-	cd $PKG_PATH && echo "theme-aurora has been fixed!"
+# ==========================================
+# 3. 修改 Aurora 菜单样式
+# ==========================================
+AURORA_DIR=$(find "$PKG_PATH" -maxdepth 2 -type d -name "luci-app-aurora-config" | head -n 1)
+if [ -n "$AURORA_DIR" ] && [ -d "$AURORA_DIR" ]; then
+    echo "🎨 Customizing Aurora theme..."
+    find "$AURORA_DIR/root/" -type f -name "*aurora*" -exec sed -i "s/nav_submenu_type '.*'/nav_submenu_type 'boxed-dropdown'/g" {} \;
+    echo "✅ Aurora theme customized!"
 fi
 
-#修改qca-nss-drv启动顺序
-NSS_DRV="../feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
+# ==========================================
+# 4. 修改 qca-nss-drv 启动顺序 (修正路径: ../feeds -> ./feeds)
+# ==========================================
+NSS_DRV="./feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
 if [ -f "$NSS_DRV" ]; then
-	echo " "
-
-	sed -i 's/START=.*/START=85/g' $NSS_DRV
-
-	cd $PKG_PATH && echo "qca-nss-drv has been fixed!"
+    echo "⚙️ Adjusting qca-nss-drv startup order..."
+    sed -i 's/START=.*/START=85/g' "$NSS_DRV"
+    echo "✅ qca-nss-drv startup order fixed!"
 fi
 
-#修改qca-nss-pbuf启动顺序
+# ==========================================
+# 5. 修改 qca-nss-pbuf 启动顺序
+# ==========================================
 NSS_PBUF="./kernel/mac80211/files/qca-nss-pbuf.init"
 if [ -f "$NSS_PBUF" ]; then
-	echo " "
-
-	sed -i 's/START=.*/START=86/g' $NSS_PBUF
-
-	cd $PKG_PATH && echo "qca-nss-pbuf has been fixed!"
+    echo "⚙️ Adjusting qca-nss-pbuf startup order..."
+    sed -i 's/START=.*/START=86/g' "$NSS_PBUF"
+    echo "✅ qca-nss-pbuf startup order fixed!"
 fi
 
-#修复TailScale配置文件冲突
-TS_FILE=$(find ../feeds/packages/ -maxdepth 3 -type f -wholename "*/tailscale/Makefile")
-if [ -f "$TS_FILE" ]; then
-	echo " "
-
-	sed -i '/\/files/d' $TS_FILE
-
-	cd $PKG_PATH && echo "tailscale has been fixed!"
+# ==========================================
+# 6. 修复 Tailscale 配置文件冲突 (修正路径)
+# ==========================================
+TS_FILE=$(find ./feeds/packages/ -maxdepth 3 -type f -wholename "*/tailscale/Makefile" 2>/dev/null | head -n 1)
+if [ -n "$TS_FILE" ] && [ -f "$TS_FILE" ]; then
+    echo "🔧 Fixing Tailscale Makefile..."
+    sed -i '/\/files/d' "$TS_FILE"
+    echo "✅ Tailscale fixed!"
 fi
 
-#修复Rust编译失败
-RUST_FILE=$(find ../feeds/packages/ -maxdepth 3 -type f -wholename "*/rust/Makefile")
-if [ -f "$RUST_FILE" ]; then
-	echo " "
-
-	sed -i 's/ci-llvm=true/ci-llvm=false/g' $RUST_FILE
-
-	cd $PKG_PATH && echo "rust has been fixed!"
+# ==========================================
+# 7. 修复 Rust 编译失败 (修正路径)
+# ==========================================
+RUST_FILE=$(find ./feeds/packages/ -maxdepth 3 -type f -wholename "*/rust/Makefile" 2>/dev/null | head -n 1)
+if [ -n "$RUST_FILE" ] && [ -f "$RUST_FILE" ]; then
+    echo "🔧 Fixing Rust Makefile..."
+    sed -i 's/ci-llvm=true/ci-llvm=false/g' "$RUST_FILE"
+    echo "✅ Rust fixed!"
 fi
 
-#修复DiskMan编译失败
-DM_FILE="./luci-app-diskman/applications/luci-app-diskman/Makefile"
-if [ -f "$DM_FILE" ]; then
-	echo " "
-
-	sed -i '/ntfs-3g-utils /d' $DM_FILE
-
-	cd $PKG_PATH && echo "diskman has been fixed!"
+# ==========================================
+# 8. 修复 DiskMan 编译失败
+# ==========================================
+DM_FILE=$(find "$PKG_PATH" -maxdepth 4 -type f -wholename "*/luci-app-diskman/Makefile" 2>/dev/null | head -n 1)
+if [ -n "$DM_FILE" ] && [ -f "$DM_FILE" ]; then
+    echo "🔧 Fixing DiskMan Makefile..."
+    sed -i '/ntfs-3g-utils /d' "$DM_FILE"
+    echo "✅ DiskMan fixed!"
 fi
 
-#修复luci-app-netspeedtest相关问题
-if [ -d *"luci-app-netspeedtest"* ]; then
-	echo " "
+# ==========================================
+# 9. 清理无用的系统插件菜单权限
+# ==========================================
+echo "🧹 Cleaning up useless system plugin menu permissions..."
+JSON_FILE=$(find ./feeds/luci "$PKG_PATH" -name "luci-mod-system.json" -path "*/acl.d/*" 2>/dev/null | head -n 1)
 
-	cd ./luci-app-netspeedtest/
-
-	sed -i '$a\exit 0' ./netspeedtest/files/99_netspeedtest.defaults
-	sed -i 's/ca-certificates/ca-bundle/g' ./speedtest-cli/Makefile
-
-	cd $PKG_PATH && echo "netspeedtest has been fixed!"
-fi
-
-echo " 正在清理无用的系统插件菜单权限..."
-
-# 1. 在源码目录中查找 luci-mod-system.json (通常在 feeds/luci 中)
-JSON_FILE=$(find "$PKG_PATH/../feeds/luci" -name "luci-mod-system.json" -path "*/acl.d/*" 2>/dev/null | head -n 1)
-
-# 如果没找到，尝试在 package 目录找
-if [ -z "$JSON_FILE" ]; then
-    JSON_FILE=$(find "$PKG_PATH" -name "luci-mod-system.json" -path "*/acl.d/*" 2>/dev/null | head -n 1)
-fi
-
-# 2. 如果找到了文件，使用 python3 安全删除
 if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
-    echo "找到源码文件: $JSON_FILE"
+    echo "Found ACL file: $JSON_FILE"
     python3 -c "
-import json, sys
+import json
 try:
     with open('$JSON_FILE', 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
     if 'luci-mod-system-plugins' in data:
         del data['luci-mod-system-plugins']
         with open('$JSON_FILE', 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print('✅ 已安全移除 luci-mod-system-plugins 权限块')
+        print('✅ Safely removed luci-mod-system-plugins permission block')
     else:
-        print('ℹ️ 源码中未包含该权限块，无需删除')
+        print('ℹ️ Permission block not found, no action needed')
 except Exception as e:
-    print(f'❌ 处理 JSON 失败: {e}')
+    print(f'❌ Failed to process JSON: {e}')
 "
 else
-    echo "️ 未找到 luci-mod-system.json 源码文件，请检查路径"
+    echo "ℹ️ luci-mod-system.json not found, skipping."
 fi
 
 # ==========================================
-# 备用修复：确保 luci-app-dockerman 版本号不带 'v' 前缀 (适配 apk)
+# 10. 终极保障：动态移除 dockerman 版本号的 'v' 前缀 (修复硬编码问题)
 # ==========================================
-find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v0.5.26" {} \; 2>/dev/null | while read -r file; do
-    echo "🔧 [Handles] Fixing PKG_VERSION in: $file"
-    sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$file"
+echo "🔧 Enforcing PKG_VERSION fix for dockerman (removing 'v' prefix)..."
+# 使用正则 v[0-9] 匹配任何以 v 开头的数字版本号，未来升级自动兼容
+find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v[0-9]" {} \; 2>/dev/null | while read -r file; do
+    echo "🔧 Found and fixing version prefix in: $file"
+    sed -i 's/^PKG_VERSION:=v\(.*\)/PKG_VERSION:=\1/' "$file"
 done
+
+echo "✅ Handles.sh execution completed successfully!"
