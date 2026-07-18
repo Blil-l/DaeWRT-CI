@@ -9,10 +9,11 @@ UPDATE_PACKAGE() {
     local REPO_NAME=${PKG_REPO#*/}
     echo " "
     
-    # 删除本地可能存在的不同名称的软件包 (修正路径: ../feeds -> ./feeds)
+    # 删除本地可能存在的不同名称的软件包 (修正路径: ./feeds)
     for NAME in "${PKG_LIST[@]}"; do
         echo "Search directory: $NAME"
-        local FOUND_DIRS=$(find ./feeds/luci/ ./feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null)
+        # 使用更精确的匹配模式，防止误伤
+        local FOUND_DIRS=$(find ./feeds/luci/ ./feeds/packages/ -maxdepth 3 -type d \( -name "$NAME" -o -name "luci-app-$NAME" -o -name "*-$NAME" \) 2>/dev/null)
         if [ -n "$FOUND_DIRS" ]; then
             while read -r DIR; do
                 rm -rf "$DIR"
@@ -28,10 +29,20 @@ UPDATE_PACKAGE() {
     
     # 处理克隆的仓库
     if [[ "$PKG_SPECIAL" == "pkg" ]]; then
-        find ./"$REPO_NAME"/*/ -maxdepth 3 -type d -iname "*$PKG_NAME*" -prune -exec cp -rf {} ./ \;
+        local TARGET_DIR=$(find ./"$REPO_NAME" -maxdepth 2 -type d -iname "*$PKG_NAME*" | head -n 1)
+        if [ -n "$TARGET_DIR" ]; then
+            mkdir -p ./package
+            mv -f "$TARGET_DIR" "./package/$PKG_NAME"
+            echo "✅ Moved $PKG_NAME to ./package/"
+        fi
         rm -rf ./"$REPO_NAME"/
     elif [[ "$PKG_SPECIAL" == "name" ]]; then
-        mv -f "$REPO_NAME" "$PKG_NAME"
+        mkdir -p ./package
+        mv -f "$REPO_NAME" "./package/$PKG_NAME"
+    else
+        # 默认行为：移动到 package 目录以确保被编译系统识别
+        mkdir -p ./package
+        mv -f "$REPO_NAME" "./package/$PKG_NAME" 2>/dev/null || true
     fi
 }
 
@@ -74,7 +85,6 @@ if [ -d "./package" ]; then
 else
     TARGET_DIR="./luci-lib-docker"
 fi
-
 if [ ! -d "$TARGET_DIR" ]; then
     echo "📥 Cloning luci-lib-docker from lisaac/luci-lib-docker..."
     git clone --depth=1 --single-branch --branch master "https://github.com/lisaac/luci-lib-docker.git" "$TARGET_DIR"
@@ -84,62 +94,24 @@ else
 fi
 
 # ==========================================
-# 3. 更新软件包版本 (修正路径: ../feeds -> ./feeds)
-# ==========================================
-UPDATE_VERSION() {
-    local PKG_NAME=$1
-    local PKG_MARK=${2:-false}
-    local PKG_FILES=$(find ./ ./feeds/packages/ -maxdepth 3 -type f -wholename "*/$PKG_NAME/Makefile" 2>/dev/null)
-    
-    if [ -z "$PKG_FILES" ]; then
-        echo "$PKG_NAME not found!"
-        return
-    fi
-    
-    echo -e "\n$PKG_NAME version update has started!"
-    for PKG_FILE in $PKG_FILES; do
-        local PKG_REPO=$(grep -Po "PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=.*)" "$PKG_FILE" || echo "")
-        if [ -z "$PKG_REPO" ]; then continue; fi
-        
-        local PKG_TAG=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease == $PKG_MARK)) | first | .tag_name")
-        local OLD_VER=$(grep -Po "PKG_VERSION:=\K.*" "$PKG_FILE")
-        local OLD_URL=$(grep -Po "PKG_SOURCE_URL:=\K.*" "$PKG_FILE")
-        local OLD_FILE=$(grep -Po "PKG_SOURCE:=\K.*" "$PKG_FILE")
-        local OLD_HASH=$(grep -Po "PKG_HASH:=\K.*" "$PKG_FILE")
-        
-        local PKG_URL=$([[ "$OLD_URL" == *"releases"* ]] && echo "${OLD_URL%/}/$OLD_FILE" || echo "${OLD_URL%/}")
-        local NEW_VER=$(echo "$PKG_TAG" | sed -E 's/[^0-9]+/\./g; s/^\.|\.$//g')
-        local NEW_URL=$(echo "$PKG_URL" | sed "s/\$(PKG_VERSION)/$NEW_VER/g; s/\$(PKG_NAME)/$PKG_NAME/g")
-        local NEW_HASH=$(curl -sL "$NEW_URL" | sha256sum | cut -d ' ' -f 1)
-        
-        echo "old version: $OLD_VER $OLD_HASH"
-        echo "new version: $NEW_VER $NEW_HASH"
-        
-        if [[ "$NEW_VER" =~ ^[0-9].* ]] && dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
-            sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/g" "$PKG_FILE"
-            sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/g" "$PKG_FILE"
-            echo "$PKG_FILE version has been updated!"
-        else
-            echo "$PKG_FILE version is already the latest!"
-        fi
-    done
-}
-
-# ==========================================
-# 4. 清理官方默认插件 (修正路径: ../feeds -> ./feeds)
+# 3. 清理官方默认插件 (修正路径: ./feeds)
 # ==========================================
 echo "🧹 Cleaning up default official packages..."
 rm -rf ./feeds/luci/applications/luci-app-{passwall*,mosdns,dockerman,dae*,bypass*}
 rm -rf ./feeds/packages/net/{v2ray-geodata,dae*}
 
-# 复制外部 package 到当前目录
-cp -r "$GITHUB_WORKSPACE"/package/* ./
+# 复制外部 package 到当前目录 (增加判空保护)
+if [ -n "$GITHUB_WORKSPACE" ] && [ -d "$GITHUB_WORKSPACE/package" ]; then
+    echo "📦 Copying external packages from GitHub Workspace..."
+    cp -r "$GITHUB_WORKSPACE"/package/* ./
+else
+    echo "⚠️ GITHUB_WORKSPACE/package not found, skipping copy."
+fi
 
 # ==========================================
-# 5. 专项补丁修复
+# 4. 专项补丁修复
 # ==========================================
 echo "🔧 Applying specific package patches..."
-
 # 修复 daed
 if [ -f "luci-app-daed/daed/Makefile" ]; then
     sed -i 's/pnpm install ; \\/pnpm install --no-frozen-lockfile ; \\/g' luci-app-daed/daed/Makefile
@@ -150,13 +122,12 @@ if [ -f "luci-app-daed/luci-app-daed/root/etc/init.d/luci_daed" ]; then
 fi
 
 # ==========================================
-# 6. 终极保障：强制移除 dockerman 版本号的 'v' 前缀
+# 5. 终极保障：动态移除 dockerman 版本号的 'v' 前缀 (修复硬编码问题)
 # ==========================================
 echo "🔧 Enforcing PKG_VERSION fix for dockerman (removing 'v' prefix)..."
-# 使用更宽泛且精准的查找，确保无论它被放在哪里都能被修改
-find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v0.5.26" {} \; 2>/dev/null | while read -r file; do
-    echo "🔧 Found and fixing in: $file"
-    sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$file"
+find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v[0-9]" {} \; 2>/dev/null | while read -r file; do
+    echo "🔧 Found and fixing version prefix in: $file"
+    sed -i 's/^PKG_VERSION:=v\(.*\)/PKG_VERSION:=\1/' "$file"
 done
 
 echo "✅ Packages.sh execution completed successfully!"
