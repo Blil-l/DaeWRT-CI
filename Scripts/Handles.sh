@@ -142,18 +142,9 @@ else
 fi
 
 # ==========================================
-# 修复 luci-app-dockerman 版本号带 'v' 前缀导致 apk 打包失败的问题
+# 备用修复：确保 luci-app-dockerman 版本号不带 'v' 前缀 (适配 apk)
 # ==========================================
-# 查找 dockerman 的 Makefile 路径
-DOCKERMEN_MAKEFILE=$(find ./wrt/package/ -type f -name "Makefile" -path "*luci-app-dockerman/applications/luci-app-dockerman/Makefile" 2>/dev/null | head -n 1)
-
-if [ -n "$DOCKERMEN_MAKEFILE" ]; then
-    echo "🔧 Fixing PKG_VERSION (removing 'v' prefix) in: $DOCKERMEN_MAKEFILE"
-    # 将 PKG_VERSION:=v0.5.26 替换为 PKG_VERSION:=0.5.26
-    sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$DOCKERMEN_MAKEFILE"
-    
-    # 验证修改结果
-    grep "PKG_VERSION:=" "$DOCKERMEN_MAKEFILE"
-else
-    echo "⚠️ Warning: Could not find luci-app-dockerman Makefile to patch."
-fi
+find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v0.5.26" {} \; 2>/dev/null | while read -r file; do
+    echo "🔧 [Handles] Fixing PKG_VERSION in: $file"
+    sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$file"
+done
