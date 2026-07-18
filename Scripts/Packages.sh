@@ -147,16 +147,20 @@ sed -i 's|/run/i\\  procd_set_param|/procd_set_param command/i \\\tprocd_set_par
 # ==========================================
 # 修复 luci-app-dockerman 版本号带 'v' 前缀导致 apk 打包失败的问题
 # ==========================================
-# 查找 dockerman 的 Makefile 路径
-DOCKERMEN_MAKEFILE=$(find ./wrt/package/ -type f -name "Makefile" -path "*luci-app-dockerman/applications/luci-app-dockerman/Makefile" 2>/dev/null | head -n 1)
+# 使用 find . 从当前目录开始查找，避免绝对或错误相对路径导致找不到文件
+DOCKERMEN_MAKEFILE=$(find . -type f -name "Makefile" -path "*luci-app-dockerman/applications/luci-app-dockerman/Makefile" 2>/dev/null | head -n 1)
 
 if [ -n "$DOCKERMEN_MAKEFILE" ]; then
     echo "🔧 Fixing PKG_VERSION (removing 'v' prefix) in: $DOCKERMEN_MAKEFILE"
     # 将 PKG_VERSION:=v0.5.26 替换为 PKG_VERSION:=0.5.26
     sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$DOCKERMEN_MAKEFILE"
-    
     # 验证修改结果
-    grep "PKG_VERSION:=" "$DOCKERMEN_MAKEFILE"
+    echo "✅ Fixed version: $(grep "PKG_VERSION:=" "$DOCKERMEN_MAKEFILE")"
 else
-    echo "⚠️ Warning: Could not find luci-app-dockerman Makefile to patch."
+    echo "⚠️ Warning: Could not find luci-app-dockerman Makefile to patch. Checking alternative paths..."
+    # 备用查找方案：直接在所有 Makefile 中查找包含 v0.5.26 的行并替换
+    find . -type f -name "Makefile" -exec grep -l "PKG_VERSION:=v0.5.26" {} \; | while read -r file; do
+        echo "🔧 Found and fixing in: $file"
+        sed -i 's/^PKG_VERSION:=v/PKG_VERSION:=/' "$file"
+    done
 fi
