@@ -77,10 +77,34 @@ UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
 UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "luci-app-timewol luci-app-wolplus"
 UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
 
-UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master"
 UPDATE_PACKAGE "luci-app-daed" "QiuSimons/luci-app-daed" "kix"
 UPDATE_PACKAGE "luci-app-pushbot" "zzsj0928/luci-app-pushbot" "master"
 UPDATE_PACKAGE "luci-app-lucky" "sirpdboy/luci-app-lucky" "main"
+
+UPDATE_PACKAGE "dockerman" "lisaac/luci-app-dockerman" "master"
+# ==========================================
+# 修复 luci-app-dockerman 缺失底层依赖 luci-lib-docker 的问题
+# ==========================================
+echo "🔧 Checking/Cloning luci-lib-docker dependency..."
+
+# 智能判断当前所在目录，确保克隆到正确的 package 路径下
+if [ -d "./package" ]; then
+    TARGET_DIR="./package/luci-lib-docker"
+elif [ "$PWD" == *"package" ]; then
+    TARGET_DIR="./luci-lib-docker"
+else
+    TARGET_DIR="./luci-lib-docker"
+fi
+
+# 如果目标目录不存在，则从 lisaac 的独立仓库克隆
+if [ ! -d "$TARGET_DIR" ]; then
+    echo "📥 Cloning luci-lib-docker from lisaac/luci-lib-docker..."
+    git clone --depth=1 --single-branch --branch master "https://github.com/lisaac/luci-lib-docker.git" "$TARGET_DIR"
+    echo "✅ luci-lib-docker cloned successfully to $TARGET_DIR"
+else
+    echo "✅ luci-lib-docker already exists, skipping clone."
+fi
+
 #更新软件包版本
 UPDATE_VERSION() {
 	local PKG_NAME=$1
