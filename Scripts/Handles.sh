@@ -111,7 +111,6 @@ JSON_FILE=$(find ./feeds/luci/modules/luci-mod-system -name "luci-mod-system.jso
 if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
     echo "找到源码文件: $JSON_FILE"
     
-    # ⚠️ 关键修复：必须导出变量，Python 才能通过 os.environ.get 获取到路径
     export JSON_FILE 
     
     python3 << 'PYEOF'
