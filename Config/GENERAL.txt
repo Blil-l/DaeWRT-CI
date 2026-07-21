@@ -20,6 +20,12 @@ CONFIG_PACKAGE_kmod-usb-net-asix-ax88179=n
 CONFIG_PACKAGE_kmod-usb-net-huawei-cdc-ncm=n
 CONFIG_PACKAGE_kmod-usb-net-sierrawireless=n
 CONFIG_PACKAGE_kmod-usb-net-asix=n
+#SQM相关
+CONFIG_FEED_nss_packages=n
+CONFIG_FEED_sqm_scripts_nss=n
+CONFIG_PACKAGE_sqm-scripts-nss=n
+CONFIG_PACKAGE_luci-app-sqm=n
+CONFIG_PACKAGE_sqm-scripts=n
 #参数调整
 CONFIG_CCACHE=y
 CONFIG_DEVEL=y
