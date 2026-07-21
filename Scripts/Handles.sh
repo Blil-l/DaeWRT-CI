@@ -103,51 +103,7 @@ if [ -n "$DM_FILE" ] && [ -f "$DM_FILE" ]; then
 fi
 
 # ==========================================
-# 9. 临时禁用系统插件菜单权限 (可还原)
-# ==========================================
-echo "🔒 Disabling system plugin menu permissions..."
-JSON_FILE=$(find ./feeds/luci/modules/luci-mod-system -name "luci-mod-system.json" -path "*/acl.d/*" 2>/dev/null | head -n 1)
-
-if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
-    echo "找到源码文件: $JSON_FILE"
-    
-    export JSON_FILE 
-    
-    python3 << 'PYEOF'
-import json
-import sys
-import os
-
-json_file = os.environ.get('JSON_FILE')
-original_key = "luci-mod-system-plugins"
-disabled_key = "_disabled_luci-mod-system-plugins"
-
-try:
-    with open(json_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    # 如果存在原始键，则重命名为禁用键
-    if original_key in data:
-        data[disabled_key] = data.pop(original_key)
-        with open(json_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write('\n')
-        print(f'✅ 已重命名 [{original_key}] 为 [{disabled_key}]，插件菜单已隐藏。')
-    elif disabled_key in data:
-        print(f'ℹ️ 插件菜单已经是禁用状态，无需重复操作。')
-    else:
-        print(f'ℹ️ 未找到相关权限块。')
-
-except Exception as e:
-    print(f'❌ 处理失败: {e}')
-    sys.exit(1)
-PYEOF
-else
-    echo "⚠️ 未找到 luci-mod-system.json 源码文件，请检查路径"
-fi
-
-# ==========================================
-# 10. 终极保障：动态移除 dockerman 版本号的 'v' 前缀 (修复硬编码问题)
+# 9. 终极保障：动态移除 dockerman 版本号的 'v' 前缀 (修复硬编码问题)
 # ==========================================
 echo "🔧 Enforcing PKG_VERSION fix for dockerman (removing 'v' prefix)..."
 # 使用正则 v[0-9] 匹配任何以 v 开头的数字版本号，未来升级自动兼容
