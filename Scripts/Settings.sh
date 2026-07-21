@@ -76,3 +76,65 @@ fi
 #亚瑟修复USB2.0日志报错问题
 #wget -qO - https://github.com/davidtall/immortalwrt/commit/ce39feb4.patch | patch -p1
 #cat ./target/linux/qualcommax/dts/ipq6000-re-ss-01.dts
+
+# =============================================================================
+# 新增模块一：优化三 - 强制关闭 CONFIG_DEVEL（减少体积，加快编译）
+# =============================================================================
+log_info() { echo -e "\033[0;32m[INFO]\033[0m  $1"; }
+log_warn() { echo -e "\033[1;33m[WARN]\033[0m  $1"; }
+
+if grep -q "^CONFIG_DEVEL=y" ./.config; then
+    sed -i 's/^CONFIG_DEVEL=y/# CONFIG_DEVEL is not set/' ./.config
+    log_info "CONFIG_DEVEL has been disabled (removed from .config)."
+else
+    log_info "CONFIG_DEVEL is already disabled or not set."
+fi
+
+# =============================================================================
+# 新增模块二：优化五 - 诊断 CONFIG_PACKAGE_coremark 依赖来源
+# =============================================================================
+log_info "=== Diagnosing CONFIG_PACKAGE_coremark ==="
+
+# 方法1：使用 OpenWrt 的 dumpconfig 工具分析依赖
+DUMP_OUTPUT=$(make -C . DUMP_CONFIG=1 2>/dev/null | grep -E "PACKAGE_coremark" || true)
+if [ -n "$DUMP_OUTPUT" ]; then
+    log_info "Dumpconfig reveals coremark-related entries:"
+    echo "------------------------------------------------------------"
+    echo "$DUMP_OUTPUT"
+    echo "------------------------------------------------------------"
+else
+    log_warn "No coremark-related entries found in dumpconfig output."
+fi
+
+# 方法2：在 package/ 和 feeds/ 中搜索依赖关系
+SEARCH_RESULT=$(grep -r -l "DEPENDS.*coremark" package/ feeds/ 2>/dev/null || true)
+if [ -n "$SEARCH_RESULT" ]; then
+    log_warn "Explicit DEPENDS on coremark found in:"
+    echo "------------------------------------------------------------"
+    for file in $SEARCH_RESULT; do
+        grep -H "DEPENDS.*coremark" "$file" 2>/dev/null || true
+    done
+    echo "------------------------------------------------------------"
+    log_info "If any of these packages are not essential, set them to '=n' in Config."
+else
+    log_info "No explicit DEPENDS on coremark found in package/ or feeds/."
+fi
+
+# 方法3：检查 .config 中 coremark 的当前状态
+if grep -q "^CONFIG_PACKAGE_coremark=y" ./.config; then
+    log_warn "coremark is currently selected as '=y' in .config."
+    # 可选：强制移除 coremark（默认注释，如需启用请取消注释）
+    # 警告：编译失败时的错误日志会明确指示是哪个包需要它，有助于最终决策
+    #
+    # if [ -z "$SEARCH_RESULT" ]; then
+    #     log_warn "No explicit dependency found. Attempting to remove coremark..."
+    #     sed -i 's/^CONFIG_PACKAGE_coremark=y/# CONFIG_PACKAGE_coremark is not set/' ./.config
+    #     log_info "coremark has been removed from .config."
+    # else
+    #     log_warn "Explicit dependency exists. Skipping forced removal."
+    # fi
+else
+    log_info "coremark is NOT selected as '=y' in .config (good!)."
+fi
+
+log_info "=== Config tuning completed successfully ==="
