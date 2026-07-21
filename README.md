@@ -10,9 +10,6 @@ https://github.com/VIKINGYFY/immortalwrt.git
 LiBWrt：
 https://github.com/LiBwrt/openwrt-6.x
 
-京东云亚瑟 AX1800 Pro DAED 需要更换分区表和uboot,具体使用方法详见恩山帖子:
-https://www.right.com.cn/forum/thread-8402269-1-1.html
-
 # 固件简要说明：
 
 固件每天早上4点自动编译。
