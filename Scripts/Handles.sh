@@ -111,6 +111,9 @@ JSON_FILE=$(find ./feeds/luci/modules/luci-mod-system -name "luci-mod-system.jso
 if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
     echo "找到源码文件: $JSON_FILE"
     
+    # ⚠️ 关键修复：必须导出变量，Python 才能通过 os.environ.get 获取到路径
+    export JSON_FILE 
+    
     python3 << 'PYEOF'
 import json
 import sys
@@ -123,7 +126,7 @@ disabled_key = "_disabled_luci-mod-system-plugins"
 try:
     with open(json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
+
     # 如果存在原始键，则重命名为禁用键
     if original_key in data:
         data[disabled_key] = data.pop(original_key)
@@ -135,13 +138,13 @@ try:
         print(f'ℹ️ 插件菜单已经是禁用状态，无需重复操作。')
     else:
         print(f'ℹ️ 未找到相关权限块。')
-        
+
 except Exception as e:
     print(f'❌ 处理失败: {e}')
     sys.exit(1)
 PYEOF
 else
-    echo "️ 未找到 luci-mod-system.json 源码文件，请检查路径"
+    echo "⚠️ 未找到 luci-mod-system.json 源码文件，请检查路径"
 fi
 
 # ==========================================
